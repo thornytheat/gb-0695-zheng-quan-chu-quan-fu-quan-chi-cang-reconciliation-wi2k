@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>配股认购发行核对</title>
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/layout.css">
+<link rel="stylesheet" href="/static/components.css">
+<script defer src="/static/rights.js"></script>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand">配股认购<span>RIGHTS / ISSUANCE</span></div>
+    <nav>
+      <a href="/work/1">← 除权复权七模块</a>
+      <a href="/rights?offering_id={{view.offering.offering_id}}" class="active">发行复核台</a>
+    </nav>
+    <small>发行 {{view.offering.offering_id}}<br>证券 {{view.offering.security}}<br>
+      配股价 {{view.offering.rights_price}} CNY/股<br>币种 CNY</small>
+  </aside>
+  <div class="work">
+    <header class="topbar">
+      <strong>配股认购发行核对</strong>
+      <span class="badge">{{view.offering.offering_id}}</span>
+      <span class="badge">r{{view.offering.revision}} / {{view.offering.decision}}</span>
+      <button class="primary" id="load-sample">载入样例并入库</button>
+      <a class="btn" href="/api/rights/evidence.csv?offering_id={{view.offering.offering_id}}">证据CSV</a>
+    </header>
+    <main class="content">
+      <div class="kpis">
+        <div class="kpi"><span>截止时点（固定）</span><b><small>{{view.offering.cutoff}}</small></b></div>
+        <div class="kpi"><span>当前复核时点</span><b><small>{{view.as_of}}</small></b></div>
+        <div class="kpi"><span>申报合计</span><b>{{view.totals['申报合计_股']}} <small>股</small></b></div>
+        <div class="kpi"><span>获配合计</span><b>{{view.totals['获配合计_股']}} <small>股</small></b></div>
+        <div class="kpi"><span>未获配合计</span><b>{{view.totals['未获配合计_股']}} <small>股</small></b></div>
+        <div class="kpi"><span>实缴 / 发行款 / 应退</span>
+          <b><small>{{view.totals['实缴合计_CNY']}} / {{view.totals['发行款合计_CNY']}} / {{view.totals['应退合计_CNY']}}</small></b></div>
+        <div class="kpi"><span>股份守恒</span>
+          <b class="{{'' if view.totals['股份守恒'] else 'sev--severe'}}">{{'守恒' if view.totals['股份守恒'] else '差异'}}</b></div>
+        <div class="kpi"><span>现金守恒</span>
+          <b class="{{'' if view.totals['现金守恒'] else 'sev--severe'}}">{{'平衡' if view.totals['现金守恒'] else '不平'}}</b></div>
+        <div class="kpi"><span>当前能否发布</span>
+          <b class="{{'' if view.gate.can_publish else 'sev--severe'}}">{{'可发布' if view.gate.can_publish else '不可发布'}}</b></div>
+      </div>
+
+      <div class="panel-grid">
+        <section class="panel wide">
+          <div class="panel__head"><h2>发布闸门</h2><span>截止后且无未核实缴款方可发布</span></div>
+          <div class="panel__body">
+            <div class="entry {{'diff' if not view.gate.reached_cutoff}}">
+              <span>截止时点判定</span><b>{{'已到截止时点' if view.gate.reached_cutoff else '未到截止时点'}}</b>
+            </div>
+            <div class="entry {{'diff' if view.pending}}">
+              <span>未核实缴款</span><b>{{view.pending|length}} 笔</b>
+            </div>
+            <div class="entry {{'diff' if not view.totals['balanced']}}">
+              <span>对账守恒</span><b>{{view.gate.blocker_text}}</b>
+            </div>
+            <div class="entry">
+              <span>锁定状态</span><b>{{view.offering.lock_status}}
+                {% if view.offering.published_at %}<small> / {{view.offering.published_at}}</small>{% endif %}</b>
+            </div>
+            <div class="actions">
+              <button class="primary" id="publish" data-revision="{{view.offering.revision}}"
+                {{'disabled' if view.offering.lock_status=='已发布' or not view.gate.can_publish}}>
+                确认发行（锁定结果）
+              </button>
+              <button data-review="通过" data-revision="{{view.offering.revision}}">复核通过</button>
+              <button data-review="退回" data-revision="{{view.offering.revision}}">复核退回</button>
+              <button id="print">打印</button>
+            </div>
+            <div id="rights-error" class="error" role="status"></div>
+          </div>
+        </section>
+
+        <section class="panel wide">
+          <div class="panel__head"><h2>逐户台账：申报 / 实缴 / 获配 / 未获配</h2><span>{{view.accounts|length}} 户</span></div>
+          <div class="scroll">
+            {% if view.accounts %}
+            <table>
+              <thead><tr>
+                <th>账户</th><th>申报股数</th><th>实缴_CNY</th><th>可购股数</th><th>获配股数</th>
+                <th>未获配股数</th><th>发行款_CNY</th><th>应退_CNY</th><th>差异_CNY</th><th>状态</th>
+              </tr></thead>
+              <tbody>
+              {% for r in view.accounts %}
+                <tr class="{{'diff' if r['未获配股数']!='0'}}">
+                  <td>{{r['账户']}}</td><td>{{r['申报股数']}}</td><td>{{r['实缴_CNY']}}</td>
+                  <td>{{r['可购股数']}}</td><td>{{r['获配股数']}}</td>
+                  <td class="{{'sev--severe' if r['未获配股数']!='0'}}">{{r['未获配股数']}}</td>
+                  <td>{{r['发行款_CNY']}}</td><td>{{r['应退_CNY']}}</td><td>{{r['差异_CNY']}}</td>
+                  <td>{{r['状态']}}</td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+            {% else %}<div class="empty">提交申报与缴款 CSV 后生成逐户台账。</div>{% endif %}
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel__head"><h2>未核实缴款</h2><span>{{view.pending|length}} 笔 · 不计入发行</span></div>
+          <div class="scroll">
+            {% if view.pending %}
+            <table><thead><tr><th>账户</th><th>金额_CNY</th></tr></thead>
+              <tbody>{% for r in view.pending %}<tr class="diff"><td>{{r['账户']}}</td><td>{{r['金额_CNY']}}</td></tr>{% endfor %}</tbody>
+            </table>{% else %}<div class="empty">无未核实缴款。</div>{% endif %}
+          </div>
+        </section>
+
+        <section class="panel double">
+          <div class="panel__head"><h2>隔离与拒收证据</h2><span>{{view.quarantine|length}} 条</span></div>
+          <div class="scroll">
+            {% if view.quarantine %}
+            <table><thead><tr><th>行号</th><th>类型</th><th>账户</th><th>原因码</th><th>原因</th></tr></thead>
+              <tbody>{% for r in view.quarantine %}
+                <tr><td>{{r.line_no or '—'}}</td><td>{{r.kind}}</td><td>{{r.account}}</td>
+                <td class="sev--severe">{{r.code}}</td><td title="{{r.reason}}">{{r.reason}}</td></tr>
+              {% endfor %}</tbody>
+            </table>{% else %}<div class="empty">无隔离记录。</div>{% endif %}
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel__head"><h2>申报 / 缴款入库</h2><span>CSV 幂等</span></div>
+          <div class="panel__body">
+            <details open>
+              <summary>编辑并提交（同编号重跑不重复发行）</summary>
+              <h3>申报 CSV</h3>
+              <textarea id="declarations-csv" aria-label="申报CSV">{{sample.declarations_csv}}</textarea>
+              <h3>缴款 CSV</h3>
+              <textarea id="payments-csv" aria-label="缴款CSV">{{sample.payments_csv}}</textarea>
+              <div class="actions">
+                <button id="submit-csv">提交文本</button>
+                <input id="as-of" type="text" placeholder="复核时点 as_of（留空=当前UTC）" aria-label="复核时点">
+              </div>
+            </details>
+            <div id="ingest-counters" class="entry"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+    <footer class="statusbar">
+      <span>规则 {{view.offering.rule_version}} / {{view.offering.created_at}} UTC</span>
+      <span>截止 {{view.offering.cutoff}} · 复核时点 {{view.as_of}}</span>
+    </footer>
+  </div>
+</div>
+<script type="application/json" id="rights-meta">{{
+  {'offering_id': view.offering.offering_id, 'revision': view.offering.revision,
+   'offering': sample.offering}|tojson }}</script>
+</body>
+</html>

@@ -13,6 +13,7 @@ from app.modules.m4_factors.handler import bp as bp4
 from app.modules.m5_holdings.handler import bp as bp5
 from app.modules.m6_cash.handler import bp as bp6
 from app.modules.m7_revisions.handler import bp as bp7
+from app.rights.handler import bp as bp_rights
 app=Flask(__name__)
 app.config['MAX_CONTENT_LENGTH']=5*1024*1024
 app.json.ensure_ascii=False
@@ -32,12 +33,17 @@ app.register_blueprint(bp4)
 app.register_blueprint(bp5)
 app.register_blueprint(bp6)
 app.register_blueprint(bp7)
+app.register_blueprint(bp_rights)
 @app.before_request
 def validate_request_object():
     if request.method!='POST': return None
     if request.files:
-        if request.path!='/api/run' or 'file' not in request.files:
+        if request.path=='/api/run' and 'file' not in request.files:
             raise DomainError('REQUEST','上传必须使用file字段',400)
+        if request.path=='/api/rights/ingest' and not ({'declarations','payments'} & request.files.keys()):
+            raise DomainError('REQUEST','需使用declarations或payments文件字段',400)
+        if request.path not in ('/api/run','/api/rights/ingest'):
+            raise DomainError('REQUEST','该接口不接受文件上传',400)
         return None
     if not request.is_json:
         raise DomainError('REQUEST','请求须为JSON对象或CSV文件',400)
